@@ -521,7 +521,7 @@ class ElementsBody(object):
                         tem *= tem1
                     coo[dm] = (tem * eleCoor[:, dm]).sum()
                     tuple_ = tch.autograd.grad(coo[dm], ksi, retain_graph=True)
-                    jacobi = tch.cat((jacobi, list(tuple_)[0]))
+                    jacobi = tch.cat((jacobi, tuple_[0]))
                 
                 jacobi = jacobi.reshape((-1, 3))
                 # if iele < 5:
@@ -556,7 +556,7 @@ class ElementsBody(object):
                         tem *= tem1
                     coo[dm] = (tem * eleCoor[:, dm]).sum()
                     tuple_ = tch.autograd.grad(coo[dm], ksi, retain_graph=True)
-                    jacobi = tch.cat((jacobi, list(tuple_)[0]))
+                    jacobi = tch.cat((jacobi, tuple_[0]))
                 
                 jacobi = jacobi.reshape((-1, 3))
                 self._volumes[eleNum] = (tch.det(jacobi) * 8.).tolist()
