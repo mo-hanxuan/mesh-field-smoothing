@@ -528,8 +528,8 @@ if __name__ == '__main__':
 
     """center coordinates of the selected region"""
     # region_cen = np.array([0.5, 0.5])
-    region_cen = np.array([10., 2.5 * 3.**0.5])
-    # region_cen = np.array([20.5, 0.5])
+    # region_cen = np.array([10., 2.5 * 3.**0.5])
+    region_cen = np.array([20.5, 0.5])
 
     ### ================================= set the volume fraction for the elements
     decideVfByGeometry(obj1, mod="constrainedSharp", geometry="ellip")

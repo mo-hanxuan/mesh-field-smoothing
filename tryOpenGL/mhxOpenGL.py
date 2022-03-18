@@ -150,6 +150,18 @@ def keydown(key, x, y):
         EYE = LOOK_AT + (EYE - LOOK_AT) * 1.1
         DIST, PHI, THETA = getposture()
         glutPostRedisplay()
+    elif key == b'l' or key == b'L' or key == b',':  # 向左，视点右移
+        tmp = sum((LOOK_AT - EYE) ** 2) ** 0.5 * 0.02
+        EYE[0] += tmp
+        LOOK_AT[0] += tmp
+        DIST, PHI, THETA = getposture()
+        glutPostRedisplay()
+    elif key == b'r' or key == b'R' or key == b'.':  # 向右，视点左移
+        tmp = sum((LOOK_AT - EYE) ** 2) ** 0.5 * 0.02
+        EYE[0] -= tmp
+        LOOK_AT[0] -= tmp
+        DIST, PHI, THETA = getposture()
+        glutPostRedisplay()
     elif key == b' ':  # 空格键，切换投影模式
         IS_PERSPECTIVE = not IS_PERSPECTIVE
         glutPostRedisplay()
