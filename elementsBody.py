@@ -1099,7 +1099,8 @@ class ElementsBody(object):
         print("\033[35;1m{} \033[40;33;1m{}\033[0m".format(
             "this body's ratio of visualization (self.ratio_draw) =", self.ratio_draw
         ))
-        return self.ratio_draw
+        self.regionCen = [(xMin + xMax) / 2., (yMin + yMax) / 2., (zMin + zMax) / 2.]
+        return self.ratio_draw, self.regionCen
 
 
     def ele_directional_range(self, iele, direction=[0., 0., 1.]):

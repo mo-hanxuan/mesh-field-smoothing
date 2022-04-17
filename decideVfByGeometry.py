@@ -81,7 +81,7 @@ def decideVfByGeometry(obj, mod="constrainedSharp", geometry="ellip"):
         for iele in range(len(obj.elements)):
             ### compute whether 8 nodes are twin or not
             nodesCoors = [np.array(obj.nodes[int(i)]) for i in obj.elements[iele]]
-            nodeIsTwin = [isTwin(nodesCoors[node], geometry) for node in range(len(nodesCoors))]
+            nodeIsTwin = [isTwin(nodesCoo, geometry) for nodesCoo in nodesCoors]
             ### judge whether the element is fully inside/outside the ellip region
             if any(nodeIsTwin) == False:
                 VF[iele] = 0.

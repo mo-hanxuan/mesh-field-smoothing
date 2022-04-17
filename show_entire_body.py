@@ -420,6 +420,16 @@ if __name__ == '__main__':
     )
     print("obj1.elements.size() = \033[40;33;1m{}\033[0m".format(obj1.elements.size()))
 
+    # ### rotate the body by 10 degrees
+    # cos10, sin10 = np.cos(10. / 180. * np.pi), np.sin(10. / 180. * np.pi)
+    # rota = np.array([
+    #     [cos10, -sin10, 0.],
+    #     [sin10, cos10, 0.],
+    #     [0., 0., 1.]
+    # ])
+    # for node in obj1.nodes:
+    #     obj1.nodes[node] = (rota @ np.array(obj1.nodes[node])).tolist()
+
     celent = obj1.get_eLen()  # characteristic element length
 
     # decide the ratio_draw of this object
