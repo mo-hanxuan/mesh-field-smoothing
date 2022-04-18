@@ -268,10 +268,10 @@ class bodyPatch(object):
         if drawArrows:
             eps = 0.01
             for ele in patchEles:
-                if obj.VF[ele] < 1.-eps:
+                if obj.VF[ele] < eps:  # if obj.VF[ele] < 1.-eps:
                     neighborOne = False
                     for other in obj.eleNeighbor[ele]:
-                        if obj.VF[other] > 1.-eps:
+                        if obj.VF[other] > eps:  # if obj.VF[other] > 1.-eps:
                             neighborOne = True
                             break
                     if neighborOne:  # self small, neighbor = 1
@@ -340,7 +340,7 @@ class bodyPatch(object):
             r = np.array([*position[:2], 1.1]) - regionCen
             r *= obj.ratio_draw
             r = r.tolist()
-            h = 1.5 * obj.ratio_draw  # use same length to visualize arrows
+            h = 2.25 * obj.ratio_draw  # h = 1.5 * obj.ratio_draw  # use same length to visualize arrows
 
             grad = gradients[position]
             angle = np.degrees(np.arctan(grad[1] / grad[0]))
@@ -516,20 +516,20 @@ if __name__ == '__main__':
     decide_ratio_draw(obj1)
 
     """center coordinates of the selected region"""
-    # region_cen = np.array([0.5, 0.5])
+    region_cen = np.array([0.5, 0.5])
     # region_cen = np.array([10., 2.5 * 3.**0.5])
-    region_cen = np.array([20.5, 0.5])
+    # region_cen = np.array([20.5, 0.5])
 
     # ### ================================= set the volume fraction for the elements
-    # decideVfByGeometry(obj1, mod="constrainedSharp", geometry="ellip")
+    decideVfByGeometry(obj1, mod="constrainedSharp", geometry="smallCircle")
     
     ### ================================= set the volume fraction and other field values for the elements
-    dataFile = input("\033[40;35;1m{}\033[0m".format(
-        "please give the data file name (include the path): "))
-    dataFrame = readDataFrame(fileName=dataFile)
-    frame = int(input("which frame do you want? frame = "))
-    obj1.VF = dataFrame["SDV210_frame{}".format(frame)]
-    obj1.stress = dataFrame["SDV212_frame{}".format(frame)]
+    # dataFile = input("\033[40;35;1m{}\033[0m".format(
+    #     "please give the data file name (include the path): "))
+    # dataFrame = readDataFrame(fileName=dataFile)
+    # frame = int(input("which frame do you want? frame = "))
+    # obj1.VF = dataFrame["SDV210_frame{}".format(frame)]
+    # obj1.stress = dataFrame["SDV212_frame{}".format(frame)]
     
     obj1.region_cen = region_cen
     body1 = bodyPatch(obj1)  # ignite ---------------------------------------------------------
@@ -541,13 +541,13 @@ if __name__ == '__main__':
             sum((np.array(obj1.eleCenter(x)[:2]) - region_cen)**2)
     )
     body1.simple_draw_patch_byOriginal(iele, field=obj1.VF)
-    body1.simple_draw_patch_byOriginal(
-        iele, field=obj1.stress, 
-        minVal=-550., 
-        # maxVal=700.,
-    )
+    # body1.simple_draw_patch_byOriginal(
+    #     iele, field=obj1.stress, 
+    #     minVal=-550., 
+    #     # maxVal=700.,
+    # )
     body1.simple_draw_patch_byFit_VF(iele, densify=False, drawArrows=True)
     body1.simple_draw_patch_byFit_VF(iele, densify=True, drawArrows=True)
     body1.simple_draw_denseNodes_of_patch(iele)
-    body1.simple_draw_patch_byFit_stress(iele, minVal=-550., maxVal=700.)
+    # body1.simple_draw_patch_byFit_stress(iele, minVal=-550., maxVal=700.)
     

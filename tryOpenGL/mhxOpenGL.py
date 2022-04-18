@@ -63,7 +63,7 @@ def getposture():
 
 
 def init():
-    glClearColor(0.0, 0.0, 0.0, 1.0)  # 设置画布背景色。注意：这里必须是4个参数
+    glClearColor(0.75, 0.75, 0.75, 1.0)  # 设置画布背景色。注意：这里必须是4个参数
     glEnable(GL_DEPTH_TEST)  # 开启深度测试，实现遮挡关系
     glDepthFunc(GL_LEQUAL)  # 设置深度测试函数（GL_LEQUAL只是选项之一）
 

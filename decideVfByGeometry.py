@@ -1,6 +1,8 @@
 from elementsBody import *
 import numpy as np
 
+from facetDenseRegular import shapeFunc2D
+
 
 def shapeFunc(naturalCoo):
     """ shape function of C3D8R element """
@@ -77,30 +79,35 @@ def decideVfByGeometry(obj, mod="constrainedSharp", geometry="ellip"):
 
     VF = np.zeros((len(obj.elements)), dtype=np.array([1.]).dtype)
 
+    obj.get_outerFacetDic()
+
     if mod == "constrainedSharp":  # 0 < VF < 1 at the interface, VF is decided by integral
-        for iele in range(len(obj.elements)):
-            ### compute whether 8 nodes are twin or not
-            nodesCoors = [np.array(obj.nodes[int(i)]) for i in obj.elements[iele]]
-            nodeIsTwin = [isTwin(nodesCoo, geometry) for nodesCoo in nodesCoors]
-            ### judge whether the element is fully inside/outside the ellip region
-            if any(nodeIsTwin) == False:
-                VF[iele] = 0.
-            elif all(nodeIsTwin) == True:
-                VF[iele] = 1.
-            else:
-                ### -------- compute the final volume fraction by integral (densify an element by n x n)
-                ### get the global coordinates of insideNodes
-                theVF = 0.
-                for i in range(denseSize):
-                    for j in range(denseSize):
-                        globalCoor = np.einsum(
-                            "i, ij -> j", 
-                            shapeFunc(np.append(insideNodes[i][j], 0.)),
-                            np.array(nodesCoors)
-                        )
-                        if isTwin(globalCoor, geometry):
-                            theVF += 1
-                VF[iele] = theVF / denseSize**2
+        for facet in obj.outerFacetDic:
+            iele = obj.outerFacetDic[facet]
+            averageZ = sum([obj.nodes[node][2] for node in facet]) / len(facet)
+            if averageZ > 0:
+                ### compute whether 4 nodes are twin or not
+                nodesCoors = [np.array(obj.nodes[int(i)]) for i in facet]
+                nodeIsTwin = [isTwin(nodesCoo, geometry) for nodesCoo in nodesCoors]
+                ### judge whether the element is fully inside/outside the ellip region
+                if any(nodeIsTwin) == False:
+                    VF[iele] = 0.
+                elif all(nodeIsTwin) == True:
+                    VF[iele] = 1.
+                else:
+                    ### -------- compute the final volume fraction by integral (densify an element by n x n)
+                    ### get the global coordinates of insideNodes
+                    theVF = 0.
+                    for i in range(denseSize):
+                        for j in range(denseSize):
+                            globalCoor = np.einsum(
+                                "i, ij -> j", 
+                                shapeFunc2D(insideNodes[i][j]),
+                                np.array(nodesCoors)
+                            )
+                            if isTwin(globalCoor, geometry):
+                                theVF += 1
+                    VF[iele] = theVF / denseSize**2
     elif mod == "simplifiedSharp":  # either 0 or 1 for VF
         for iele in range(len(obj.elements)):
             if isTwin(obj.eleCenter(iele), geometry):
