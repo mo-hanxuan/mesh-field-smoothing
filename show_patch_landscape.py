@@ -527,12 +527,12 @@ if __name__ == '__main__':
     decide_ratio_draw(obj1)
 
     """center coordinates of the selected region"""
-    # region_cen = np.array([0.5, 0.5])
+    region_cen = np.array([0.5, 0.5])
     # region_cen = np.array([10., 2.5 * 3.**0.5])
-    region_cen = np.array([20.5, 0.5])
+    # region_cen = np.array([20.5, 0.5])
 
     ### ================================= set the volume fraction for the elements
-    decideVfByGeometry(obj1, mod="constrainedSharp", geometry="ellip")
+    decideVfByGeometry(obj1, mod="simplifiedSharp", geometry="smallCircle")
     
     # ### ================================= set the volume fraction and other field values for the elements
     # dataFile = input("\033[40;35;1m{}\033[0m".format(

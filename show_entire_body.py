@@ -46,129 +46,6 @@ class entireBody(object):
         self.obj1 = obj1
         self.region_cen = obj1.region_cen
 
-    def show_entire_body(self,):
-        """
-            show the entire body,
-            along with its densified nodes near interface,
-            and the gradient vectors at interface
-        """
-        obj1 = self.obj1
-        eps = 1.e-3  # a value nearly 0
-        if not hasattr(obj1, "eleNeighbor"):
-            obj1.get_eleNeighbor()
-        elif obj1.eleNeighbor == None:
-            obj1.get_eleNeighbor()
-        
-        ### get the interface element
-        interfaceOut, interfaceIn = set(), set()  # the inside and outside of the interface
-        for ele in range(len(obj1.elements)):
-            if obj1.VF[ele] < (1. - eps):  # < 1
-                flag = False
-                for ele2 in obj1.eleNeighbor[ele]:
-                    if obj1.VF[ele2] >= (1. - eps):  # ≈ 1
-                        flag = True
-                        break
-                if flag:
-                    interfaceOut.add(ele)
-            else: # ≈ 1
-                for ele2 in obj1.eleNeighbor[ele]:
-                    flag = False
-                    if obj1.VF[ele2] < (1. - eps):  # < 1
-                        flag = True
-                        break
-                if flag:
-                    interfaceIn.add(ele)
-        print("\033[40;32;1m{} \033[40;33m{}\033[0m".format(
-            "len(interfaceOut) =", len(interfaceOut)
-        ))
-
-        ### get the volumes and eLen of this object
-        if not hasattr(obj1, "volumes"):
-            obj1.getVolumes(0)
-        obj1.eLen = obj1.getVolumes(0) ** (1./3.)
-        print("\033[40;31;1m{} \033[40;33;1m{}\033[0m".format(
-            "(obj1.eLen, computed by average ele volume) ->\n"
-            "               characteristic element length =", obj1.eLen
-        ))
-
-        ### get all elements center coordinates
-        if len(obj1.eCen) == 0:
-            for i in range(len(obj1.elements)):
-                obj1.eleCenter(i)
-
-        set_sparse = set(i for i in range(len(obj1.elements)))
-        set_dense = interfaceIn | interfaceOut
-        set_sparse -= set_dense
-
-        denseNodes = {"pos":[], "eles":[], "vals":[]}
-        grads = {"pos":[], "grads":[]}
-        vx = np.array([1., 0., 0.]) * float(obj1.eLen)  # base vector on x direction
-        vy = np.array([0., 1., 0.]) * float(obj1.eLen)  # base vector on y direction
-
-        spreadRange = float(input("\033[35;1m {} \033[0m".format("spreadRange =")))
-        
-        print("\033[32m{}\033[0m".format("now get all dense nodes:"))
-        count = 0
-        for ele in set_dense:
-            count += 1
-            if count % 5 == 0:
-                progressBar_percentage((count / len(set_dense)) * 100.)
-            for i in range(-1, 2):
-                for j in range(-1, 2):
-                    pos = np.array(obj1.eleCenter(ele)) \
-                        + (1./3.) * i * vx \
-                        + (1./3.) * j * vy
-                    denseNodes["pos"].append(pos)
-                    denseNodes["vals"].append(
-                        weighted_average(
-                            pos, ele, obj1, 
-                            func="normal_distri",
-                            result='val',  # return value or return grad
-                            dimension=2,  # dimension for normal distribution
-                            spreadRange=spreadRange,
-                        )
-                    )
-        print("\033[32m{}\033[0m".format("now get all gradient vectors:"))
-        count = 0
-        for ele in interfaceOut:
-            count += 1
-            if count % 5 == 0:
-                progressBar_percentage((count / len(interfaceOut)) * 100.)
-            pos = np.array(obj1.eleCenter(ele))
-            grads["pos"].append(pos)
-            grads["grads"].append(
-                weighted_average(
-                    pos, ele, obj1, 
-                    func="normal_distri",
-                    result='grad',  # return value or return grad
-                    dimension=2,  # dimension for normal distribution
-                    spreadRange=spreadRange,
-                )
-            )
-
-        nonlinear, w = 1, 1
-        X, Y, Z, idx, X1, Y1, Z1, \
-        Xden, Yden, Zden = XYZforGL.get(
-            obj1, w, [0, 0],
-            nonlinear,
-            dense_region=set(),
-            sparse_region=set(i for i in range(len(obj1.elements))),
-            dense_edges=False,
-            show_original_field=True,
-        )
-        Zmax, Zmin = Z.max(), Z.min()
-
-        self.dataPack = (
-            X, Y, Z, idx, X1, Y1, Z1,
-            Xden, Yden, Zden,
-            Zmax, Zmin,
-            {"pos": []},  # denseNodes
-            grads, 
-        )
-
-        print("haha, hello world!")
-        mhxOpenGL.showUp(self.draw_of_show_entire_body)
-
     
     def simple_draw_body(self, field, 
                          minVal=None, maxVal=None,
@@ -284,129 +161,6 @@ class entireBody(object):
         ### ---------------------------------------------------------------
         glutSwapBuffers()  # 切换缓冲区，以显示绘制内容
 
-
-    def draw_of_show_entire_body(self):
-        # coordinateLine.draw(lineWidth=3.,
-        #                     lineLength=0.8)  # draw coordinate lines
-        # --------------------------------- draw the element planes
-        X, Y, Z, idx, X1, Y1, Z1, \
-            Xden, Yden, Zden, \
-            Zmax, Zmin, \
-            denseNodes, grads, \
-        = self.dataPack
-
-        dense_edges = False
-        obj1, region_cen = self.obj1, self.region_cen
-
-        # ----------------------------------- draw the dense nodes
-        for i in range(len(denseNodes["pos"])):
-
-            red, green, blue = colorBar.getColor(denseNodes["vals"][i])
-            # red, green, blue = 0.6, 0.6, 0.6
-            glColor4f(red, green, blue, 1.0)
-            glMaterialfv(GL_FRONT, GL_AMBIENT, [red, green, blue])
-            glMaterialfv(GL_FRONT, GL_DIFFUSE, [red, green, blue])
-            glMaterialfv(GL_FRONT, GL_SPECULAR, [red, green, blue])
-            glMaterialfv(GL_FRONT, GL_EMISSION, [red, green, blue])
-
-            radius = 0.1
-            pos = [denseNodes["pos"][i][0], denseNodes["pos"][i][1], radius]
-            pos[2] += radius
-            pos -= np.array([*self.region_cen, 0.])
-            # pos[0] += 12.  # dense nodes deviate from region_cen of visualization
-            pos, radius = pos * obj1.ratio_draw, radius * obj1.ratio_draw
-            putSphere(pos, radius, [red, green, blue], resolution=10)
-        # ---------------------------------------------------------------
-
-        # ----------------------------------- draw the gradient vector
-        red, green, blue = 1., 1., 1.
-        glColor4f(red, green, blue, 1.0)
-        glMaterialfv(GL_FRONT, GL_AMBIENT, [red, green, blue])
-        glMaterialfv(GL_FRONT, GL_DIFFUSE, [red, green, blue])
-        glMaterialfv(GL_FRONT, GL_SPECULAR, [0., 1., 1.])
-        glMaterialfv(GL_FRONT, GL_EMISSION, [0., 0., 0.])
-        for i in range(len(grads["pos"])):
-            r = np.array([grads["pos"][i][0], grads["pos"][i][1], 0.4])
-            r[0:2] -= np.array(region_cen)
-            r *= obj1.ratio_draw
-            r = r.tolist()
-            h = (np.array(grads["grads"][i]) ** 2).sum() ** (1./2.)
-            h = 4. * obj1.eLen  # what if every grad vector use the the same length to visualize
-
-            h *= obj1.ratio_draw
-
-            angle = np.degrees(np.arctan(grads["grads"][i][1] / grads["grads"][i][0]))
-
-            if np.sign(grads["grads"][i][0]) == 0:
-                angle = np.sign(grads["grads"][i][1]) * 90.
-
-            if grads["grads"][i][0] < 0:
-                angle -= 180.
-            angle -= 180.
-            Arrow3D.show(h, 0.05, angle, r)
-        # ---------------------------------------------------------------
-
-        glBegin(GL_QUADS)
-        for i in range(len(X)):
-            color = (Z[i] - Zmin) / (Zmax - Zmin)
-            # color = (obj1.rss[idx[i] - 1] - min(stress2)) / (max(stress2) - min(stress2))
-            red, green, blue = colorBar.getColor(color)
-            glColor4f(red * 1., green * 1., blue * 1., 1.0)
-            glMaterialfv(GL_FRONT, GL_AMBIENT, [red, green, blue])
-            glMaterialfv(GL_FRONT, GL_DIFFUSE, [red, green, blue])
-            glMaterialfv(GL_FRONT, GL_SPECULAR, [red, green, blue])
-            glMaterialfv(GL_FRONT, GL_EMISSION, [red, green, blue])
-            glVertex3f(X[i],
-                    Y[i],
-                    0.)
-        glEnd()
-
-        # ----------------------------------- draw the element edges
-        if dense_edges == True:
-            glLineWidth(2.)
-            red, green, blue = 0.4, 0.4, 0.4
-            glColor4f(red, green, blue, 1.0)
-            glMaterialfv(GL_FRONT, GL_AMBIENT, [red, green, blue])
-            glMaterialfv(GL_FRONT, GL_DIFFUSE, [red, green, blue])
-            glMaterialfv(GL_FRONT, GL_SPECULAR, [red, green, blue])
-            glMaterialfv(GL_FRONT, GL_EMISSION, [red, green, blue])
-            glBegin(GL_LINES)
-            for i in range(len(Xden)):
-                glVertex3f(Xden[i],
-                        Yden[i],
-                        0.)
-            glEnd()
-
-        glLineWidth(3.0)
-        red, green, blue = 0.01, 0.01, 0.01
-        glColor4f(red, green, blue, 1.0)
-        glMaterialfv(GL_FRONT, GL_AMBIENT, [red, green, blue])
-        glMaterialfv(GL_FRONT, GL_DIFFUSE, [red, green, blue])
-        glMaterialfv(GL_FRONT, GL_SPECULAR, [red, green, blue])
-        glMaterialfv(GL_FRONT, GL_EMISSION, [red, green, blue])
-        glBegin(GL_LINES)
-        for i in range(len(X1)):
-            glVertex3f(X1[i],
-                    Y1[i],
-                    0.)
-        glEnd()
-
-        # show the center point by a line
-        glLineWidth(3.0)
-        red, green, blue = 1., 1., 1.
-        glColor4f(red, green, blue, 1.0)
-        glMaterialfv(GL_FRONT, GL_AMBIENT, [red, green, blue])
-        glMaterialfv(GL_FRONT, GL_DIFFUSE, [red, green, blue])
-        glMaterialfv(GL_FRONT, GL_SPECULAR, [red, green, blue])
-        glMaterialfv(GL_FRONT, GL_EMISSION, [red, green, blue])
-        glBegin(GL_LINES)
-        glVertex3f(0., 0., 0.)
-        glVertex3f(0., 0., 5.)
-        glEnd()
-
-        # ---------------------------------------------------------------
-        glutSwapBuffers()  # 切换缓冲区，以显示绘制内容
-
     
 if __name__ == '__main__':
     w = [6.2560, -2.5243,  7.5602,  2.0000]
@@ -420,16 +174,6 @@ if __name__ == '__main__':
     )
     print("obj1.elements.size() = \033[40;33;1m{}\033[0m".format(obj1.elements.size()))
 
-    # ### rotate the body by 10 degrees
-    # cos10, sin10 = np.cos(10. / 180. * np.pi), np.sin(10. / 180. * np.pi)
-    # rota = np.array([
-    #     [cos10, -sin10, 0.],
-    #     [sin10, cos10, 0.],
-    #     [0., 0., 1.]
-    # ])
-    # for node in obj1.nodes:
-    #     obj1.nodes[node] = (rota @ np.array(obj1.nodes[node])).tolist()
-
     celent = obj1.get_eLen()  # characteristic element length
 
     # decide the ratio_draw of this object
@@ -439,7 +183,7 @@ if __name__ == '__main__':
     region_cen = [0., 0.]
 
     ### ================================= set the volume fraction for the elements
-    decideVfByGeometry(obj1)
+    decideVfByGeometry(obj1, mod="simplifiedSharp")
     
     # dataFile = input("\033[40;35;1m{}\033[0m".format(
     #     "please give the data file name (include the path): "

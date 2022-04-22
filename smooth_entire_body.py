@@ -31,7 +31,7 @@ from decideVfByGeometry import *
 from horizon import *
 
 
-class FitEntireBody(object):
+class SmoothEntireBody(object):
 
     def __init__(self, obj):
         if not isinstance(obj, ElementsBody):
@@ -320,7 +320,8 @@ class FitEntireBody(object):
     def draw_average_field(self, 
                         fieldOption="VF",  # field can be VF or stress 
                         minVal=None, maxVal=None,
-                        drawArrows=False):
+                        drawArrows=False, 
+                        drawSmooth=True):
         """
             use weighted average
             draw the patch (entire body as a patch)
@@ -345,11 +346,11 @@ class FitEntireBody(object):
         maxVal = max(field) if maxVal == None else maxVal
 
         patchEles = {i for i in range(len(obj.elements))}
-        facets, edges = {}, {}
+        facets, edges, gradients = {}, {}, {}
         for facet in obj.outerFacetDic:
             ele = obj.outerFacetDic[facet]
 
-            if ele in self.totalHorizon:
+            if drawSmooth and ele in self.totalHorizon:
                 valueFunc = averageFunc
             else:
                 valueFunc = lambda *arges: field[ele]
@@ -395,11 +396,9 @@ class FitEntireBody(object):
                         spreadRange
                     )) + 0.1, xyzs))  
         
-        ### whether draw the arrows of gradients
-        gradients = {}  # key: position, value: gradient
-        if drawArrows:
-            eps = 0.01
-            for ele in patchEles:
+            ### whether draw the arrows of gradients
+            if drawArrows:
+                eps = 0.01
                 if obj.VF[ele] < 1.-eps:
                     neighborOne = False
                     for other in obj.eleNeighbor[ele]:
@@ -481,7 +480,7 @@ class FitEntireBody(object):
             r = np.array([*position[:2], 1.1]) - regionCen
             r *= obj.ratio_draw
             r = r.tolist()
-            h = 3. * obj.ratio_draw  # h = 1.5 * obj.ratio_draw  # use same length to visualize arrows
+            h = 3.5 * obj.ratio_draw  # h = 1.5 * obj.ratio_draw  # use same length to visualize arrows
 
             grad = gradients[position]
             angle = np.degrees(np.arctan(grad[1] / grad[0]))
@@ -740,7 +739,8 @@ class FitEntireBody(object):
                         ele_regularDenseNodes[theEle] = [(i, j), ]
             print("")  # break line for the progress bar
             self.denseNodes, self.denseNodes_ele, self.ele_regularDenseNodes = denseNodes, denseNodes_ele, ele_regularDenseNodes
-    
+            return denseNodes, denseNodes_ele, ele_regularDenseNodes
+
 
     def __draw_nodes__(self, smallNodes, bigNodes, minVal, maxVal, regionCen):
         obj = self.obj
@@ -808,24 +808,22 @@ if __name__ == "__main__":
     )
 
     ### get the VF of each element of this object
-    # decideVfByGeometry(obj1, mod="simplifiedSharp")
+    decideVfByGeometry(obj1, mod="constrainedSharp")
 
-    dataFile = input("\033[40;35;1m{}\033[0m".format(
-        "please give the data file name (include the path): "
-    ))
-    dataFrame = readDataFrame(fileName=dataFile)
-    frame = int(input("which frame do you want? frame = "))
-    obj1.VF = dataFrame["SDV210_frame{}".format(frame)]
-    obj1.stress = dataFrame["SDV212_frame{}".format(frame)]
-
-    ### the shape of an elliptic
-    longAxis, shortAxis = 20., 5.
+    # dataFile = input("\033[40;35;1m{}\033[0m".format(
+    #     "please give the data file name (include the path): "
+    # ))
+    # dataFrame = readDataFrame(fileName=dataFile)
+    # frame = int(input("which frame do you want? frame = "))
+    # obj1.VF = dataFrame["SDV210_frame{}".format(frame)]
+    # obj1.stress = dataFrame["SDV212_frame{}".format(frame)]
     
     ### get the maximum x and minimum, and obj1.ratio_draw
     decide_ratio_draw(obj1)
     
     ## show the entire body with fitting field
-    fittingField = FitEntireBody(obj1)  # ignite ---------------------------------------------------------
-    # fittingField.draw_fitting_field(fieldOption="VF", drawArrows=True, preRefine=True)
-    # fittingField.draw_average_field(fieldOption="VF", drawArrows=True)
-    fittingField.draw_regularDenseNodes_localDense(fieldOption="stress")
+    field = SmoothEntireBody(obj1)  # ignite ---------------------------------------------------------
+    # field.draw_fitting_field(fieldOption="VF", drawArrows=True, preRefine=True)
+    # field.draw_average_field(fieldOption="VF", drawArrows=True, drawSmooth=True)
+    field.draw_regularDenseNodes_localDense(fieldOption="VF")
+    # field.draw_regularDenseNodes_localDense(fieldOption="stress", minVal=-550.)

@@ -5,7 +5,8 @@ before fitting, the sample points are densified,
 then the dense samples are taken to fitting
 """
 
-from attr import has
+from attr import attr, has
+from matplotlib.cbook import sanitize_sequence
 import numpy as np
 import matplotlib.pyplot as plt
 from multiprocessing import Process
@@ -40,6 +41,7 @@ from sphere3D import putSphere
 
 from weightedAverage import *
 from horizon import *
+from smooth_entire_body import SmoothEntireBody
 
 
 class bodyPatch(object):
@@ -72,7 +74,12 @@ class bodyPatch(object):
             denseSamples = get_denseSamples(obj, horizon)
         
             """ get dense Samples' values """
-            spreadRange = float(input("\033[35;1m {} \033[0m".format("spread range = ")))
+            if not hasattr(self, "spreadRange"):
+                spreadRange = float(input("\033[35;1m {} \033[0m".format("spread range = ")))
+                self.spreadRange = spreadRange
+            else:
+                spreadRange = self.spreadRange
+
             denseSamplesVals = {}
             for iele in denseSamples:
                 denseSamplesVals[iele] = []
@@ -142,7 +149,7 @@ class bodyPatch(object):
                 denseSamplesVals[iele] = []
                 for nodeCoo in denseSamples[iele]:
                     denseSamplesVals[iele].append(
-                        weighted_average(
+                        weighted_average_forStress(
                             xyz=nodeCoo, iele=iele,
                             obj1=obj, 
                             func="normal_distri", 
@@ -242,7 +249,7 @@ class bodyPatch(object):
                 ### densify or not
                 sameNeighbor = True
                 for other in obj.eleNeighbor[ele]:
-                    if obj.VF[other] != obj.VF[ele]:
+                    if abs(field[other] - field[ele]) / (abs(field[ele]) + 1.e-8) > 1.e-3:
                         sameNeighbor = False
                         break
                 if not sameNeighbor:
@@ -268,10 +275,10 @@ class bodyPatch(object):
         if drawArrows:
             eps = 0.01
             for ele in patchEles:
-                if obj.VF[ele] < eps:  # if obj.VF[ele] < 1.-eps:
+                if obj.VF[ele] < 1.-eps:
                     neighborOne = False
                     for other in obj.eleNeighbor[ele]:
-                        if obj.VF[other] > eps:  # if obj.VF[other] > 1.-eps:
+                        if obj.VF[other] > 1.-eps:
                             neighborOne = True
                             break
                     if neighborOne:  # self small, neighbor = 1
@@ -402,15 +409,154 @@ class bodyPatch(object):
         ).start()
 
 
-    def __draw_nodes_of_patch__(self, nodes, minVal, maxVal, regionCen):
+    def simple_draw_regularDenseNodes_of_patch(self, iele, densify=True, 
+                                               minVal=None, maxVal=None, 
+                                               fieldName="VF", 
+                                               mod="fitting"):
+        if mod == "fitting":
+            print("\033[32;1m {} \033[0m".format("the smoothing method is fitting. "))
+            self.simple_draw_regularDenseNodes_of_patch_fit(
+                iele, densify, 
+                minVal, maxVal, 
+                fieldName
+            )
+        else:
+            print("\033[32;1m {} \033[0m".format("the smoothing method is weighted average. "))
+            self.simple_draw_regularDenseNodes_of_patch_average(
+                iele, densify, 
+                minVal, maxVal, 
+                fieldName
+            )
+
+
+    def simple_draw_regularDenseNodes_of_patch_fit(self, iele, densify=True, 
+                                                   minVal=None, maxVal=None, 
+                                                   fieldName="VF"):
+        if not hasattr(self, "spreadRange"):
+            spreadRange = float(input("\033[35;1m {} \033[0m".format("spread range = ")))
+            self.spreadRange = spreadRange
+        else:
+            spreadRange = self.spreadRange
+        
+        obj = self.obj1
+        smallNodes, bigNodes = {}, {}
+        if fieldName == "VF":
+            net = self.get_ele_VfNet(iele)
+            field = obj.VF
+        else:
+            net = self.get_ele_stressNet(iele)
+            field = obj.stress
+        
+        if densify:
+
+            if not hasattr(self, "ele_regularDenseNodes"):
+                denseNodes, denseNodes_ele, ele_regularDenseNodes = SmoothEntireBody(obj).getRegularDenseNodes()
+                self.denseNodes, self.ele_regularDenseNodes = denseNodes, ele_regularDenseNodes
+            else:
+                denseNodes, ele_regularDenseNodes = self.denseNodes, self.ele_regularDenseNodes
+
+            for ele in horizons(obj, iele=iele, inHorizon=obj.inBox):
+                sameNeighbor = True
+                for other in obj.eleNeighbor[ele]:
+                    if abs(obj.VF[other] - obj.VF[ele]) > 1.e-3:
+                        sameNeighbor = False
+                        break
+                if not sameNeighbor:
+                    for i, j in ele_regularDenseNodes[ele]:
+                        position = np.append(denseNodes[i, j], 0.)
+                        smallNodes[tuple(position)] = float(net.reasoning(position))
+                else:  # sameNeighbor
+                    position = np.array(obj.eleCenter(ele))
+                    bigNodes[tuple(position)] = field[ele]
+        else:
+            for ele in horizons(obj, iele=iele, inHorizon=obj.inBox):
+                bigNodes[tuple(obj.eleCenter(ele))] = field[ele]
+        
+        minVal = min(field) if minVal == None else minVal
+        maxVal = max(field) if maxVal == None else maxVal
+        
+        Process(
+            target=mhxOpenGL.showUp,
+            args=(
+                self.__draw_nodes_of_patch__,
+                smallNodes, bigNodes, 
+                minVal, maxVal,
+                obj.eleCenter(iele),  # regionCen
+            )
+        ).start()
+    
+
+    def simple_draw_regularDenseNodes_of_patch_average(self, iele, densify=True, 
+                                                       minVal=None, maxVal=None, 
+                                                       fieldName="VF"):
+        if not hasattr(self, "spreadRange"):
+            spreadRange = float(input("\033[35;1m {} \033[0m".format("spread range = ")))
+            self.spreadRange = spreadRange
+        else:
+            spreadRange = self.spreadRange
+        
+        obj = self.obj1
+        smallNodes, bigNodes = {}, {}
+        if fieldName == "VF":
+            averageFunc = weighted_average
+            field = obj.VF
+        else:
+            averageFunc = weighted_average_forStress
+            field = obj.stress
+
+        if densify:
+
+            if not hasattr(self, "ele_regularDenseNodes"):
+                denseNodes, denseNodes_ele, ele_regularDenseNodes = SmoothEntireBody(obj).getRegularDenseNodes()
+                self.denseNodes, self.ele_regularDenseNodes = denseNodes, ele_regularDenseNodes
+            else:
+                denseNodes, ele_regularDenseNodes = self.denseNodes, self.ele_regularDenseNodes
+
+            for ele in horizons(obj, iele=iele, inHorizon=obj.inBox):
+                sameNeighbor = True
+                for other in obj.eleNeighbor[ele]:
+                    if abs(obj.VF[other] - obj.VF[ele]) > 1.e-3:
+                        sameNeighbor = False
+                        break
+                if not sameNeighbor:
+                    for i, j in ele_regularDenseNodes[ele]:
+                        position = np.append(denseNodes[i, j], 0.)
+                        smallNodes[tuple(position)] = averageFunc(
+                            xyz=position, iele=ele, obj1=obj, 
+                            func="normal_distri", 
+                            result="val", 
+                            spreadRange=spreadRange, 
+                        )
+                else:  # sameNeighbor
+                    position = np.array(obj.eleCenter(ele))
+                    bigNodes[tuple(position)] = field[ele]
+        else:
+            for ele in horizons(obj, iele=iele, inHorizon=obj.inBox):
+                bigNodes[tuple(obj.eleCenter(ele))] = field[ele]
+        
+        minVal = min(field) if minVal == None else minVal
+        maxVal = max(field) if maxVal == None else maxVal
+        
+        Process(
+            target=mhxOpenGL.showUp,
+            args=(
+                self.__draw_nodes_of_patch__,
+                smallNodes, bigNodes, 
+                minVal, maxVal,
+                obj.eleCenter(iele),  # regionCen
+            )
+        ).start()
+
+
+    def __draw_nodes_of_patch__(self, smallNodes, bigNodes, minVal, maxVal, regionCen):
         """
         input: nodes -> Dict
             key: position
             value: field value of this node
         """
         obj = self.obj1
-        for position in nodes:
-            red, green, blue = colorBar.getColor((nodes[position] - minVal) / (maxVal - minVal))
+        for position in smallNodes:
+            red, green, blue = colorBar.getColor((smallNodes[position] - minVal) / (maxVal - minVal))
             glColor4f(red, green, blue, 1.0)
             glMaterialfv(GL_FRONT, GL_AMBIENT, [red, green, blue])
             glMaterialfv(GL_FRONT, GL_DIFFUSE, [red, green, blue])
@@ -418,6 +564,19 @@ class bodyPatch(object):
             glMaterialfv(GL_FRONT, GL_EMISSION, [red, green, blue])
 
             radius = 0.11
+            pos = np.array(position) - np.array([*regionCen[:2], -0.5])
+            pos, radius = pos * obj.ratio_draw, radius * obj.ratio_draw
+            putSphere(pos, radius, [red, green, blue], resolution=10)
+
+        for position in bigNodes:
+            red, green, blue = colorBar.getColor((bigNodes[position] - minVal) / (maxVal - minVal))
+            glColor4f(red, green, blue, 1.0)
+            glMaterialfv(GL_FRONT, GL_AMBIENT, [red, green, blue])
+            glMaterialfv(GL_FRONT, GL_DIFFUSE, [red, green, blue])
+            glMaterialfv(GL_FRONT, GL_SPECULAR, [red, green, blue])
+            glMaterialfv(GL_FRONT, GL_EMISSION, [red, green, blue])
+
+            radius = 0.22
             pos = np.array(position) - np.array([*regionCen[:2], -0.5])
             pos, radius = pos * obj.ratio_draw, radius * obj.ratio_draw
             putSphere(pos, radius, [red, green, blue], resolution=10)
@@ -516,20 +675,20 @@ if __name__ == '__main__':
     decide_ratio_draw(obj1)
 
     """center coordinates of the selected region"""
-    region_cen = np.array([0.5, 0.5])
-    # region_cen = np.array([10., 2.5 * 3.**0.5])
+    # region_cen = np.array([0.5, 0.5])
+    region_cen = np.array([10., 2.5 * 3.**0.5])
     # region_cen = np.array([20.5, 0.5])
 
     # ### ================================= set the volume fraction for the elements
-    decideVfByGeometry(obj1, mod="constrainedSharp", geometry="smallCircle")
+    # decideVfByGeometry(obj1, mod="constrainedSharp", geometry="ellip")
     
     ### ================================= set the volume fraction and other field values for the elements
-    # dataFile = input("\033[40;35;1m{}\033[0m".format(
-    #     "please give the data file name (include the path): "))
-    # dataFrame = readDataFrame(fileName=dataFile)
-    # frame = int(input("which frame do you want? frame = "))
-    # obj1.VF = dataFrame["SDV210_frame{}".format(frame)]
-    # obj1.stress = dataFrame["SDV212_frame{}".format(frame)]
+    dataFile = input("\033[40;35;1m{}\033[0m".format(
+        "please give the data file name (include the path): "))
+    dataFrame = readDataFrame(fileName=dataFile)
+    frame = int(input("which frame do you want? frame = "))
+    obj1.VF = dataFrame["SDV210_frame{}".format(frame)]
+    obj1.stress = dataFrame["SDV212_frame{}".format(frame)]
     
     obj1.region_cen = region_cen
     body1 = bodyPatch(obj1)  # ignite ---------------------------------------------------------
@@ -540,14 +699,21 @@ if __name__ == '__main__':
         key=lambda x:
             sum((np.array(obj1.eleCenter(x)[:2]) - region_cen)**2)
     )
-    body1.simple_draw_patch_byOriginal(iele, field=obj1.VF)
+    # body1.simple_draw_patch_byOriginal(iele, field=obj1.VF)
     # body1.simple_draw_patch_byOriginal(
     #     iele, field=obj1.stress, 
     #     minVal=-550., 
     #     # maxVal=700.,
     # )
-    body1.simple_draw_patch_byFit_VF(iele, densify=False, drawArrows=True)
-    body1.simple_draw_patch_byFit_VF(iele, densify=True, drawArrows=True)
-    body1.simple_draw_denseNodes_of_patch(iele)
-    # body1.simple_draw_patch_byFit_stress(iele, minVal=-550., maxVal=700.)
+    # body1.simple_draw_patch_byFit_VF(iele, densify=False, drawArrows=True)
+    # body1.simple_draw_patch_byFit_VF(iele, densify=True, drawArrows=False)
+    # body1.simple_draw_denseNodes_of_patch(iele)
+
+    body1.simple_draw_regularDenseNodes_of_patch(iele, fieldName="VF", )
+    body1.simple_draw_regularDenseNodes_of_patch(iele, fieldName="stress", minVal=-550., maxVal=700.)
+    body1.simple_draw_regularDenseNodes_of_patch(iele, fieldName="VF", mod="weightedAverage")
+    body1.simple_draw_regularDenseNodes_of_patch(iele, fieldName="stress", minVal=-550., maxVal=700., mod="weightedAverage")
+    
+    body1.simple_draw_patch_byFit_stress(iele, minVal=-550., maxVal=700., frozenClassifier=False, densify=True)
+    body1.simple_draw_patch_byFit_stress(iele, minVal=-550., maxVal=700., frozenClassifier=False, densify=False)
     
