@@ -212,7 +212,10 @@ def weighted_average_forStress(
         ))
     if result == 'val':
         weights, eVals = [], []
-        eles = list(obj1.eleNeighbor[iele] | {iele})
+        if spreadRange < 1.6:
+            eles = list(obj1.eleNeighbor[iele] | {iele})
+        else:
+            eles = obj1.findHorizon(iele, obj1.inSphericalHorizon, spreadRange)
         idx = 0
         while idx < len(eles):
             if obj1.VF[eles[idx]] != obj1.VF[iele]:

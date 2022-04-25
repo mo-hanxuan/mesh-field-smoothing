@@ -1002,7 +1002,7 @@ class ElementsBody(object):
                 variable of True or False
         """
         if len(args) == 0:
-            radius = 6.5  # 5.5
+            radius = 8.5  # 5.5
         else:
             radius = args[0]
         eps = 0.01  # relative error of eLen

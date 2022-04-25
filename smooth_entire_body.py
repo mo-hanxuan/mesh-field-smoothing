@@ -5,6 +5,7 @@
 """
 
 from re import S
+from sys import prefix
 from tokenize import Double
 from xml.dom import ValidationErr
 from attr import has
@@ -137,17 +138,66 @@ class SmoothEntireBody(object):
         self.vfNets, self.totalFitRegion = nets, totalFitRegion
     
 
-    def get_stressNets(self):
+    def get_stressNets(self, preRefine=False):
         obj = self.obj
         if not hasattr(self, "vfNets"):
             self.get_VfNets()
+        
+        """ densify the sample for fitting """
+        denseSamples = {}  # keys: element number
+                           # values: dense nodes' coordinates attatched to this element
+        if preRefine:
+            vx, vy = np.array([1., 0., 0.]) * obj.eLen, np.array([0., 1., 0.]) * obj.eLen
+            for iele in range(len(obj.elements)):
+                sameNeighbor = True
+                for other in obj.eleNeighbor[iele]:
+                    if obj.VF[other] != obj.VF[iele]:
+                        sameNeighbor = False
+                        break
+                if not sameNeighbor:
+                    denseSamples[iele] = []
+                    ### get the dense nodes' coordinates for this element
+                    for i in [-1./3., 0, 1./3.]:
+                        for j in [-1./3., 0, 1./3.]:
+                            denseSamples[iele].append(
+                                np.array(obj.eleCenter(iele)) + i * vx + j * vy
+                            )
+        
+        """ get dense Samples' values """
+        spreadRange = float(input("\033[35;1m {} \033[0m".format(
+            "weighted average of stress, spreadRange = ")))
+        denseSamplesVals = {}
+        for iele in denseSamples:
+            denseSamplesVals[iele] = []
+            for nodeCoo in denseSamples[iele]:
+                denseSamplesVals[iele].append(
+                    weighted_average_forStress(
+                        xyz=nodeCoo, iele=iele,
+                        obj1=obj, 
+                        func="normal_distri", 
+                        spreadRange=spreadRange,
+                    )
+                )
+
         stressNets = {}
         for iele in self.vfNets:
             stressNets[iele] = NeuralNetwork(mod="stress", dm=2)
             horizon = horizons(obj, iele)
             ### fit the net by stress values
-            xyzs = [obj.eleCenter(_) for _ in horizon]
-            vals = [obj.stress[_] for _ in horizon]
+            xyzs, vals = [], []
+            for other in horizon:
+                if other in denseSamples:
+                    ### take the dense Samples
+                    for nodeCoo in denseSamples[other]:
+                        xyzs.append(nodeCoo)
+                    for nodeVal in denseSamplesVals[other]:
+                        vals.append(nodeVal)
+                else:
+                    ### take center node with value of weighted average
+                    xyzs.append(np.array(obj.eleCenter(other)))
+                    vals.append(obj.stress[other])  # vals.append(averageVF(obj, other, spreadRange))
+            # xyzs = [obj.eleCenter(_) for _ in horizon]
+            # vals = [obj.stress[_] for _ in horizon]
             initialWei = list(map(lambda x: x.data, self.vfNets[iele].net.parameters()))
             initialWei[-2] = -initialWei[-2]
             initialWei[-1][:] = sum(vals) / len(vals)
@@ -184,16 +234,13 @@ class SmoothEntireBody(object):
             nets = self.vfNets
         elif fieldOption == "stress":
             field = obj.stress
-            self.get_stressNets()
+            self.get_stressNets(preRefine=preRefine)
             nets = self.stressNets
         else:
             raise ValidationErr("error, fieldOption can be either 'VF' or 'stress'")
         
         obj.get_outerFacetDic()
         obj.get_facialEdgeDic()
-        
-        minVal = min(field) if minVal == None else minVal
-        maxVal = max(field) if maxVal == None else maxVal
 
         patchEles = {i for i in range(len(obj.elements))}
         facets, edges = {}, {}
@@ -257,6 +304,16 @@ class SmoothEntireBody(object):
                     else:
                         raise ValueError("not supported input for args of fieldOption, "
                                          "you shouls input 'VF' or 'stress'")
+        if minVal == None:
+            minVal = float("inf")
+            for facet in facets:
+                for node in facets[facet]["fieldVals"]:
+                    minVal = min(minVal, facets[facet]["fieldVals"][node])
+        if maxVal == None:
+            maxVal = -float("inf")
+            for facet in facets:
+                for node in facets[facet]["fieldVals"]:
+                    maxVal = max(maxVal, facets[facet]["fieldVals"][node])
         
         ### whether draw the arrows of gradients
         gradients = {}  # key: position, value: gradient

@@ -172,7 +172,6 @@ class EntireField(object):
                     for node in facets[facet]["fieldVals"]:
                         minVal = min(minVal, facets[facet]["fieldVals"][node])
             
-
         ### whether draw the arrows of gradients
         # gradients = {}  # key: position, value: gradient
         # if drawArrows:
