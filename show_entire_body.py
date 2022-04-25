@@ -183,7 +183,7 @@ if __name__ == '__main__':
     region_cen = [0., 0.]
 
     ### ================================= set the volume fraction for the elements
-    decideVfByGeometry(obj1, mod="simplifiedSharp")
+    decideVfByGeometry(obj1, mod="simplifiedSharp", geometry="ellip")
     
     # dataFile = input("\033[40;35;1m{}\033[0m".format(
     #     "please give the data file name (include the path): "

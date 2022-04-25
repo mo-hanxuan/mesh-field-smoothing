@@ -23,7 +23,7 @@ def shapeFunc(naturalCoo):
     return res
 
 
-def isTwin(xyz, geometry="ellip"):
+def isTwin(xyz, geometry="ellip", center=[0., 0.]):
     """
     input:
         xyz -> np.ndarray: coordinates of a point, 
@@ -53,6 +53,24 @@ def isTwin(xyz, geometry="ellip"):
         slop = np.tan(-20. / 180. * np.pi)
         bias = 0.
         if (-slop * (xyz[0] - 0.5) + (xyz[1] - 0.5) + bias) < 0:
+            return True
+        else:
+            return False
+    elif geometry == "tiltEllip":
+        ### parameters for tilt elliptic
+        center = np.array(center)
+        longAxis, shortAxis = 20., 5.
+        angle = np.pi / 6.
+
+        ### judge whether the position is inside the twin
+        eigenVec1 = np.array([np.cos(angle), np.sin(angle)])
+        eigenVec2 = np.array([-np.sin(angle), np.cos(angle)])
+        mat = np.array([eigenVec1, eigenVec2]).transpose() @ \
+              np.array([[1. / longAxis**2, 0.], 
+                        [0., 1. / shortAxis**2]]) @ \
+              np.array([eigenVec1, eigenVec2])
+        relativePosition = np.array(xyz)[:2] - center[:2]
+        if relativePosition.transpose() @ mat @ relativePosition < 1.**2:
             return True
         else:
             return False

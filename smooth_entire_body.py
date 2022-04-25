@@ -249,8 +249,14 @@ class SmoothEntireBody(object):
                         tuple(facets[facet]["denseNodesCoo"][edge[0]]), 
                         tuple(facets[facet]["denseNodesCoo"][edge[1]]),
                     ]))
-                    edges[xyzs] = list(map(lambda x: float(valueFunc(x)) + 0.1, xyzs))  # hight of the edge, 
-                                                                                        # represented by field value
+                    if fieldOption == "VF":
+                        ### hight of the edge, represented by field value
+                        edges[xyzs] = list(map(lambda x: float(valueFunc(x)) + 0.1, xyzs)) 
+                    elif fieldOption == "stress":
+                        edges[xyzs] = [1., 1.]
+                    else:
+                        raise ValueError("not supported input for args of fieldOption, "
+                                         "you shouls input 'VF' or 'stress'")
         
         ### whether draw the arrows of gradients
         gradients = {}  # key: position, value: gradient
@@ -274,7 +280,8 @@ class SmoothEntireBody(object):
                   facets, edges, 
                   minVal, maxVal,
                   obj.regionCen,  # regionCen
-                  gradients)
+                  gradients,
+                  fieldOption)
         ).start()
     
 
@@ -429,26 +436,45 @@ class SmoothEntireBody(object):
     def __simple_draw_patch__(self, facets, edges, 
                               minVal, maxVal, 
                               regionCen,
-                              gradients):
+                              gradients,
+                              fieldOption="VF"):
         obj = self.obj
         ### ----------------------------------- draw the facets
         glBegin(GL_QUADS)
-        for bigFacet in facets:
-            for smallFacet in facets[bigFacet]["facets"]:
-                for node in smallFacet:
-                    VF = facets[bigFacet]["fieldVals"][node]
-                    color = (VF - minVal) / (maxVal - minVal)
-                    red, green, blue = colorBar.getColor(color)
-                    glColor4f(red, green, blue, 1.0)
-                    glMaterialfv(GL_FRONT, GL_AMBIENT, [red, green, blue])
-                    glMaterialfv(GL_FRONT, GL_DIFFUSE, [red, green, blue])
-                    glMaterialfv(GL_FRONT, GL_SPECULAR, [red, green, blue])
-                    glMaterialfv(GL_FRONT, GL_EMISSION, [red, green, blue])
-                    glVertex3f(
-                        (facets[bigFacet]["denseNodesCoo"][node][0] - regionCen[0]) * obj.ratio_draw, 
-                        (facets[bigFacet]["denseNodesCoo"][node][1] - regionCen[1]) * obj.ratio_draw, 
-                        (VF - regionCen[2]) * obj.ratio_draw
-                    )
+        if fieldOption == "VF":
+            for bigFacet in facets:
+                for smallFacet in facets[bigFacet]["facets"]:
+                    for node in smallFacet:
+                        VF = facets[bigFacet]["fieldVals"][node]
+                        color = (VF - minVal) / (maxVal - minVal)
+                        red, green, blue = colorBar.getColor(color)
+                        glColor4f(red, green, blue, 1.0)
+                        glMaterialfv(GL_FRONT, GL_AMBIENT, [red, green, blue])
+                        glMaterialfv(GL_FRONT, GL_DIFFUSE, [red, green, blue])
+                        glMaterialfv(GL_FRONT, GL_SPECULAR, [red, green, blue])
+                        glMaterialfv(GL_FRONT, GL_EMISSION, [red, green, blue])
+                        glVertex3f(
+                            (facets[bigFacet]["denseNodesCoo"][node][0] - regionCen[0]) * obj.ratio_draw, 
+                            (facets[bigFacet]["denseNodesCoo"][node][1] - regionCen[1]) * obj.ratio_draw, 
+                            (VF - regionCen[2]) * obj.ratio_draw
+                        )
+        elif fieldOption == "stress":
+            for bigFacet in facets:
+                for smallFacet in facets[bigFacet]["facets"]:
+                    for node in smallFacet:
+                        VF = facets[bigFacet]["fieldVals"][node]
+                        color = (VF - minVal) / (maxVal - minVal)
+                        red, green, blue = colorBar.getColor(color)
+                        glColor4f(red, green, blue, 1.0)
+                        glMaterialfv(GL_FRONT, GL_AMBIENT, [red, green, blue])
+                        glMaterialfv(GL_FRONT, GL_DIFFUSE, [red, green, blue])
+                        glMaterialfv(GL_FRONT, GL_SPECULAR, [red, green, blue])
+                        glMaterialfv(GL_FRONT, GL_EMISSION, [red, green, blue])
+                        glVertex3f(
+                            (facets[bigFacet]["denseNodesCoo"][node][0] - regionCen[0]) * obj.ratio_draw, 
+                            (facets[bigFacet]["denseNodesCoo"][node][1] - regionCen[1]) * obj.ratio_draw, 
+                            (facets[bigFacet]["denseNodesCoo"][node][2] - regionCen[2]) * obj.ratio_draw
+                        )
         glEnd()
 
         ### ----------------------------------- draw the element edges
@@ -460,13 +486,22 @@ class SmoothEntireBody(object):
         glMaterialfv(GL_FRONT, GL_SPECULAR, [red, green, blue])
         glMaterialfv(GL_FRONT, GL_EMISSION, [red, green, blue])
         glBegin(GL_LINES)
-        for edge in edges:
-            glVertex3f((edge[0][0] - regionCen[0]) * obj.ratio_draw, 
-                       (edge[0][1] - regionCen[1]) * obj.ratio_draw, 
-                       (edges[edge][0] - regionCen[2]) * obj.ratio_draw)
-            glVertex3f((edge[1][0] - regionCen[0]) * obj.ratio_draw, 
-                       (edge[1][1] - regionCen[1]) * obj.ratio_draw, 
-                       (edges[edge][1] - regionCen[2]) * obj.ratio_draw)
+        if fieldOption == "VF":
+            for edge in edges:
+                glVertex3f((edge[0][0] - regionCen[0]) * obj.ratio_draw, 
+                        (edge[0][1] - regionCen[1]) * obj.ratio_draw, 
+                        (edges[edge][0] - regionCen[2]) * obj.ratio_draw)
+                glVertex3f((edge[1][0] - regionCen[0]) * obj.ratio_draw, 
+                        (edge[1][1] - regionCen[1]) * obj.ratio_draw, 
+                        (edges[edge][1] - regionCen[2]) * obj.ratio_draw)
+        else:
+            for edge in edges:
+                glVertex3f((edge[0][0] - regionCen[0]) * obj.ratio_draw, 
+                           (edge[0][1] - regionCen[1]) * obj.ratio_draw, 
+                           (edge[0][2] - regionCen[2]) * obj.ratio_draw)
+                glVertex3f((edge[1][0] - regionCen[0]) * obj.ratio_draw, 
+                           (edge[1][1] - regionCen[1]) * obj.ratio_draw, 
+                           (edge[1][2] - regionCen[2]) * obj.ratio_draw)
         glEnd()
 
         ### ----------------------------------- draw the gradient arrows
@@ -808,22 +843,22 @@ if __name__ == "__main__":
     )
 
     ### get the VF of each element of this object
-    decideVfByGeometry(obj1, mod="constrainedSharp")
+    # decideVfByGeometry(obj1, mod="constrainedSharp")
 
-    # dataFile = input("\033[40;35;1m{}\033[0m".format(
-    #     "please give the data file name (include the path): "
-    # ))
-    # dataFrame = readDataFrame(fileName=dataFile)
-    # frame = int(input("which frame do you want? frame = "))
-    # obj1.VF = dataFrame["SDV210_frame{}".format(frame)]
-    # obj1.stress = dataFrame["SDV212_frame{}".format(frame)]
+    dataFile = input("\033[40;35;1m{}\033[0m".format(
+        "please give the data file name (include the path): "
+    ))
+    dataFrame = readDataFrame(fileName=dataFile)
+    frame = int(input("which frame do you want? frame = "))
+    obj1.VF = dataFrame["SDV210_frame{}".format(frame)]
+    obj1.stress = dataFrame["SDV212_frame{}".format(frame)]
     
     ### get the maximum x and minimum, and obj1.ratio_draw
     decide_ratio_draw(obj1)
     
     ## show the entire body with fitting field
     field = SmoothEntireBody(obj1)  # ignite ---------------------------------------------------------
-    # field.draw_fitting_field(fieldOption="VF", drawArrows=True, preRefine=True)
+    field.draw_fitting_field(fieldOption="stress", drawArrows=False, preRefine=True, minVal=-550.)
     # field.draw_average_field(fieldOption="VF", drawArrows=True, drawSmooth=True)
-    field.draw_regularDenseNodes_localDense(fieldOption="VF")
+    # field.draw_regularDenseNodes_localDense(fieldOption="VF")
     # field.draw_regularDenseNodes_localDense(fieldOption="stress", minVal=-550.)

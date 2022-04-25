@@ -30,7 +30,7 @@ def weighted_average(
         raise ValidationErr("\033[31;1m {} {} \033[0m".format(
             "error, index iele out of range, iele =", iele
         ))
-    if field == None:
+    if type(field) not in [type(np.array([])), type(tch.tensor([])), type([])]:
         field = obj1.VF
     weightFuncs = {}
     dwdxs = {}
