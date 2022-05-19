@@ -1002,7 +1002,7 @@ class ElementsBody(object):
                 variable of True or False
         """
         if len(args) == 0:
-            radius = 8.5  # 5.5
+            radius = 7.5  # 7.5 is better for stress fitting of whole body
         else:
             radius = args[0]
         eps = 0.01  # relative error of eLen

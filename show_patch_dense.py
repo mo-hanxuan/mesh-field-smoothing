@@ -679,32 +679,50 @@ if __name__ == '__main__':
     region_cen = np.array([10., 2.5 * 3.**0.5])
     # region_cen = np.array([20.5, 0.5])
 
-    # ### ================================= set the volume fraction for the elements
-    # decideVfByGeometry(obj1, mod="constrainedSharp", geometry="ellip")
-    
-    ### ================================= set the volume fraction and other field values for the elements
-    dataFile = input("\033[40;35;1m{}\033[0m".format(
-        "please give the data file name (include the path): "))
-    dataFrame = readDataFrame(fileName=dataFile)
-    frame = int(input("which frame do you want? frame = "))
-    obj1.VF = dataFrame["SDV210_frame{}".format(frame)]
-    obj1.stress = dataFrame["SDV212_frame{}".format(frame)]
+    ### get the VF of each element of this object
+    dataSource = "fromFile"  # = "fromFile" or "fromGeometry"
+    if dataSource == "fromGeometry":
+        decideVfByGeometry(obj1, mod="constrainedSharp")
+    elif dataSource == "fromFile":
+        dataFile = input("\033[40;35;1m{}\033[0m".format(
+            "please give the data file name (include the path): "
+        ))
+        dataFrame = readDataFrame(fileName=dataFile)
+        frame = int(input("which frame do you want? frame = "))
+        obj1.VF = dataFrame["SDV210_frame{}".format(frame)]
+        obj1.stress = dataFrame["SDV212_frame{}".format(frame)]
     
     obj1.region_cen = region_cen
     body1 = bodyPatch(obj1)  # ignite ---------------------------------------------------------
     
     ### show the patch by fit values
+    faceEle = []
+    eps = 1.e-3
+    obj1.get_eleNeighbor()
+    for ele in range(len(obj1.elements)):
+        if obj1.VF[ele] < eps:
+            for other in obj1.eleNeighbor[ele]:
+                if obj1.VF[other] > 1.-eps:
+                    faceEle.append(ele)
+        elif eps <= obj1.VF[ele] <= 1.-eps:
+            faceEle.append(ele)
     iele = min(
-        range(len(obj1.elements)),
-        key=lambda x:
-            sum((np.array(obj1.eleCenter(x)[:2]) - region_cen)**2)
+        faceEle,
+        key=lambda ele:
+            sum((np.array(obj1.eleCenter(ele)[:2]) - np.array([14.5, 1.5]))**2)
     )
-    # body1.simple_draw_patch_byOriginal(iele, field=obj1.VF)
-    # body1.simple_draw_patch_byOriginal(
-    #     iele, field=obj1.stress, 
-    #     minVal=-550., 
-    #     # maxVal=700.,
+    # iele = min(
+    #     range(len(obj1.elements)),
+    #     key=lambda x:
+    #         sum((np.array(obj1.eleCenter(x)[:2]) - region_cen)**2)
     # )
+
+    body1.simple_draw_patch_byOriginal(iele, field=obj1.VF)
+    body1.simple_draw_patch_byOriginal(
+        iele, field=obj1.stress, 
+        minVal=0., 
+        maxVal=700.,
+    )
     # body1.simple_draw_patch_byFit_VF(iele, densify=False, drawArrows=True)
     # body1.simple_draw_patch_byFit_VF(iele, densify=True, drawArrows=False)
     # body1.simple_draw_denseNodes_of_patch(iele)

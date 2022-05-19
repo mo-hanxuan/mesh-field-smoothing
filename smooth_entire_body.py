@@ -32,6 +32,9 @@ from decideVfByGeometry import *
 from horizon import *
 
 
+# def get_initialWeight(horizon, ):
+
+
 class SmoothEntireBody(object):
 
     def __init__(self, obj):
@@ -92,19 +95,20 @@ class SmoothEntireBody(object):
                             )
         
         """ get dense Samples' values """
-        spreadRange = float(input("\033[35;1m {} \033[0m".format("spread range = ")))
         denseSamplesVals = {}
-        for iele in denseSamples:
-            denseSamplesVals[iele] = []
-            for nodeCoo in denseSamples[iele]:
-                denseSamplesVals[iele].append(
-                    weighted_average(
-                        xyz=nodeCoo, iele=iele,
-                        obj1=obj, 
-                        func="normal_distri", 
-                        spreadRange=spreadRange,
+        if preRefine:
+            spreadRange = float(input("\033[35;1m {} \033[0m".format("spread range = ")))
+            for iele in denseSamples:
+                denseSamplesVals[iele] = []
+                for nodeCoo in denseSamples[iele]:
+                    denseSamplesVals[iele].append(
+                        weighted_average(
+                            xyz=nodeCoo, iele=iele,
+                            obj1=obj, 
+                            func="normal_distri", 
+                            spreadRange=spreadRange,
+                        )
                     )
-                )
         
         """ fit the nets """
         totalFitRegion = set()
@@ -123,6 +127,25 @@ class SmoothEntireBody(object):
                     ### take center node with value of weighted average
                     xyzs.append(np.array(obj.eleCenter(other)))
                     vals.append(obj.VF[other])  # vals.append(averageVF(obj, other, spreadRange))
+            
+            ### get the initial weights by the geometry, specify the 4 lines of classifier
+            num_hidden = 4  # 4 neurons in the hidden layer
+            angle0 = 0.
+            angles = np.arange(angle0, angle0 + 2*np.pi, 2*np.pi / num_hidden)  # angles of the lines
+            points = [  # each line goes through a perticular point
+                np.array(obj.eleCenter(iele)[:2]) + 2.5 * np.array([np.cos(angle), np.sin(angle)]) 
+                for angle in angles
+            ]
+            initialWeis = [[], [], [], []]
+            for angle in angles:
+                initialWeis[0].append([np.cos(angle), np.sin(angle)])
+            for id, point in enumerate(points):
+                idPlus = id + 1 if id + 1 < len(points) else 0
+                initialWeis[1].append(-np.array(initialWeis[0][idPlus]) @ point)
+            initialWeis[2] = [-1. for _ in range(num_hidden)]
+            initialWeis[3].append(0.)
+            initialWeis = [th.tensor(wei) for wei in initialWeis]
+
             nets[iele].getFitting(  # anagolus to the learning process by gradient decent method
                 xyzs, vals, 
                 region_cen=obj.eleCenter(iele),
@@ -134,14 +157,15 @@ class SmoothEntireBody(object):
                     ### so that the wieghts and bias at hidden layer remian unchanged 
                 prematurelyBreak=False,  # whether prematurely break when the parameters nearly unchanged at a step
                 refitTimes=10,  # refit by changing the initial values of weights
+                initialWei=initialWeis,
             )
         self.vfNets, self.totalFitRegion = nets, totalFitRegion
     
 
-    def get_stressNets(self, preRefine=False):
+    def get_stressNets(self, preRefine=False, frozenClassifier=False):
         obj = self.obj
         if not hasattr(self, "vfNets"):
-            self.get_VfNets()
+            self.get_VfNets(preRefine=preRefine)
         
         """ densify the sample for fitting """
         denseSamples = {}  # keys: element number
@@ -184,20 +208,27 @@ class SmoothEntireBody(object):
             stressNets[iele] = NeuralNetwork(mod="stress", dm=2)
             horizon = horizons(obj, iele)
             ### fit the net by stress values
-            xyzs, vals = [], []
-            for other in horizon:
-                if other in denseSamples:
-                    ### take the dense Samples
-                    for nodeCoo in denseSamples[other]:
-                        xyzs.append(nodeCoo)
-                    for nodeVal in denseSamplesVals[other]:
-                        vals.append(nodeVal)
-                else:
-                    ### take center node with value of weighted average
-                    xyzs.append(np.array(obj.eleCenter(other)))
-                    vals.append(obj.stress[other])  # vals.append(averageVF(obj, other, spreadRange))
-            # xyzs = [obj.eleCenter(_) for _ in horizon]
-            # vals = [obj.stress[_] for _ in horizon]
+            if preRefine:
+                xyzs, vals = [], []
+                for other in horizon:
+                    if other in denseSamples:
+                        ### take the dense Samples
+                        for nodeCoo in denseSamples[other]:
+                            xyzs.append(nodeCoo)
+                        for nodeVal in denseSamplesVals[other]:
+                            vals.append(nodeVal)
+                    else:
+                        ### take center node with value of weighted average
+                        xyzs.append(np.array(obj.eleCenter(other)))
+                        vals.append(weighted_average_forStress(
+                            xyz=obj.eleCenter(other), iele=other,
+                            obj1=obj, 
+                            func="normal_distri", 
+                            spreadRange=spreadRange,
+                        ))
+            else:
+                xyzs = [obj.eleCenter(_) for _ in horizon]
+                vals = [obj.stress[_] for _ in horizon]
             initialWei = list(map(lambda x: x.data, self.vfNets[iele].net.parameters()))
             initialWei[-2] = -initialWei[-2]
             initialWei[-1][:] = sum(vals) / len(vals)
@@ -210,11 +241,12 @@ class SmoothEntireBody(object):
                 initialWei=initialWei,
                 innerLoops=1,  # whether fit multiple times in the inner loop and choose a net with lowest loss
                 plotData=False, printData=False, 
-                frozenClassifier=False,  
+                frozenClassifier=frozenClassifier,  
                     ### frozenClassifier, whether freeze the classier (possiotion and direction), 
                     ### so that the wieghts and bias at hidden layer remian unchanged 
                 prematurelyBreak=False,  # whether prematurely break when the parameters nearly unchanged at a step
                 refitTimes=10,  # refit by changing the initial values of weights
+                loopMax=3000, # loopMax=3000, 
             )
         self.stressNets = stressNets
 
@@ -223,7 +255,9 @@ class SmoothEntireBody(object):
                         fieldOption="VF",  # field can be VF or stress 
                         minVal=None, maxVal=None,
                         drawArrows=False, 
-                        preRefine=True):
+                        preRefine=True, 
+                        otherPatches=(), 
+                        frozenClassifier=False):
         """
             draw the patch (entire body as a patch)
         """
@@ -234,7 +268,7 @@ class SmoothEntireBody(object):
             nets = self.vfNets
         elif fieldOption == "stress":
             field = obj.stress
-            self.get_stressNets(preRefine=preRefine)
+            self.get_stressNets(preRefine=preRefine, frozenClassifier=frozenClassifier)
             nets = self.stressNets
         else:
             raise ValidationErr("error, fieldOption can be either 'VF' or 'stress'")
@@ -243,6 +277,7 @@ class SmoothEntireBody(object):
         obj.get_facialEdgeDic()
 
         patchEles = {i for i in range(len(obj.elements))}
+        map_ele_outerFAcet = {}
         facets, edges = {}, {}
         for facet in obj.outerFacetDic:
             ele = obj.outerFacetDic[facet]
@@ -254,12 +289,33 @@ class SmoothEntireBody(object):
                     if other in nets:
                         neighborNets.append(other)
                 if len(neighborNets) > 0:
-                    ### find the nearest element who has net
+                    # netE = max(
+                    #     neighborNets,
+                    #     key=lambda other:
+                    #         abs(np.array(obj.eleCenter(other))[0])
+                    # )
+                    # netE = min(
+                    #     neighborNets,
+                    #     key=lambda other:
+                    #         nets[other].finalLoss
+                    # )
                     netE = min(
                         neighborNets,
                         key=lambda other:
                             sum((np.array(obj.eleCenter(other)) - np.array(obj.eleCenter(ele)))**2)
                     )
+                    # if len(otherPatches) >= 2:
+                    #     tipRight = otherPatches[0]
+                    #     if tipRight in neighborNets:
+                    #         coor = np.array(obj.eleCenter(tipRight)) + np.array([1., 0., 0.])
+                    #         if sum((np.array(obj.eleCenter(ele)) - coor)**2) < 9.5**2 and obj.eleCenter(ele)[0] > 20.:
+                    #             netE = tipRight
+                    #     else:
+                    #         tipLeft = otherPatches[1]
+                    #         if tipLeft in neighborNets:
+                    #             coor = np.array(obj.eleCenter(tipLeft)) - np.array([1., 0., 0.])
+                    #             if sum((np.array(obj.eleCenter(ele)) - coor)**2) < 9.5**2 and obj.eleCenter(ele)[0] < -20.:
+                    #                 netE = tipLeft
                     valueFunc = nets[netE].reasoning
                 else:
                     raise ValueError("error, len(neighborNets) == 0")
@@ -268,21 +324,15 @@ class SmoothEntireBody(object):
 
             averageZ = sum([obj.nodes[node][2] for node in facet]) / len(facet)
             if averageZ > 0:
+                
+                map_ele_outerFAcet[ele] = facet
+                
                 facets[facet] = {}
                 ### densify or not
                 if len(neighborNets) > 0:
                     denseOrder = 4
                 else:
                     denseOrder = 1
-                # sameNeighbor = True
-                # for other in obj.eleNeighbor[ele]:
-                #     if obj.VF[other] != obj.VF[ele]:
-                #         sameNeighbor = False
-                #         break
-                # if not sameNeighbor:
-                #     denseOrder = 4  # densify by 4 times
-                # else:
-                #     denseOrder = 1
 
                 ### get the densified facets inside big facets
                 facets[facet]["denseNodesCoo"], facets[facet]["facets"], outerFrames = facetDenseRegular(
@@ -340,7 +390,53 @@ class SmoothEntireBody(object):
                   gradients,
                   fieldOption)
         ).start()
-    
+
+        ### whether draw the other patches
+        for ele in otherPatches:
+            valueFunc = nets[ele].reasoning
+            horizon = obj.findHorizon(iele=ele, inHorizon=obj.inBox)
+            facets, edges = {}, {}
+            for iele in horizon:
+                sameNeighbor = True
+                for other in obj.eleNeighbor[iele]:
+                    if field[other] != field[iele]:
+                        sameNeighbor = False
+                        break
+                if not sameNeighbor:
+                    denseOrder = 4  # densify by 4 times
+                else:
+                    denseOrder = 1
+                ### get the densified facets inside big facets
+                facet = map_ele_outerFAcet[iele]
+                facets[facet] = {}
+                facets[facet]["denseNodesCoo"], facets[facet]["facets"], outerFrames = facetDenseRegular(
+                    np.array([obj.nodes[node] for node in facet]), order=denseOrder
+                )
+                facets[facet]["fieldVals"] = {}
+                for node in facets[facet]["denseNodesCoo"]:
+                    facets[facet]["fieldVals"][node] = float(valueFunc(facets[facet]["denseNodesCoo"][node]))
+                for edge in outerFrames:
+                    xyzs = tuple(sorted([
+                        tuple(facets[facet]["denseNodesCoo"][edge[0]]), 
+                        tuple(facets[facet]["denseNodesCoo"][edge[1]]),
+                    ]))
+                    if fieldOption == "VF":
+                        ### hight of the edge, represented by field value
+                        edges[xyzs] = list(map(lambda x: float(valueFunc(x)) + 0.1, xyzs)) 
+                    elif fieldOption == "stress":
+                        edges[xyzs] = [1., 1.]
+                    else:
+                        raise ValueError("not supported input for args of fieldOption, "
+                                         "you shouls input 'VF' or 'stress'")
+            Process(
+                target=mhxOpenGL.showUp, 
+                args=(self.__simple_draw_patch__, 
+                    facets, edges, 
+                    minVal, maxVal,
+                    obj.eleCenter(ele),  # regionCen
+                    {},  # gradients
+                    fieldOption)
+            ).start()    
 
     ### ======================================================================== related to weighted average
     
@@ -450,15 +546,18 @@ class SmoothEntireBody(object):
                         tuple(facets[facet]["denseNodesCoo"][edge[1]]),
                     ]))
                     ### hight of the edge, represented by field value
-                    edges[xyzs] = list(map(lambda x: float(valueFunc(
-                        x,  # xyz
-                        ele,  # iele
-                        obj,  # obj1
-                        "normal_distri",  # func
-                        "val",  # result
-                        2,  # dimension
-                        spreadRange
-                    )) + 0.1, xyzs))  
+                    if fieldOption == "VF":
+                        edges[xyzs] = list(map(lambda x: float(valueFunc(
+                            x,  # xyz
+                            ele,  # iele
+                            obj,  # obj1
+                            "normal_distri",  # func
+                            "val",  # result
+                            2,  # dimension
+                            spreadRange
+                        )) + 0.1, xyzs))  
+                    else:
+                        edges[xyzs] = [1., 1.]
         
             ### whether draw the arrows of gradients
             if drawArrows:
@@ -485,7 +584,8 @@ class SmoothEntireBody(object):
                   facets, edges, 
                   minVal, maxVal,
                   obj.regionCen,  # regionCen
-                  gradients)
+                  gradients, 
+                  fieldOption)
         ).start()
 
     ### ============================================================================= related to patch draw
@@ -607,7 +707,7 @@ class SmoothEntireBody(object):
             nets = self.vfNets
         elif fieldOption == "stress":
             field = obj.stress
-            self.get_stressNets()
+            self.get_stressNets(preRefine=preRefine)
             nets = self.stressNets
         else:
             raise ValidationErr("error, fieldOption can be either 'VF' or 'stress'")
@@ -695,7 +795,7 @@ class SmoothEntireBody(object):
             nets = self.vfNets
         elif fieldOption == "stress":
             field = obj.stress
-            self.get_stressNets()
+            self.get_stressNets(preRefine=preRefine)
             nets = self.stressNets
         else:
             raise ValidationErr("error, fieldOption can be either 'VF' or 'stress'")
@@ -900,22 +1000,54 @@ if __name__ == "__main__":
     )
 
     ### get the VF of each element of this object
-    # decideVfByGeometry(obj1, mod="constrainedSharp")
-
-    dataFile = input("\033[40;35;1m{}\033[0m".format(
-        "please give the data file name (include the path): "
-    ))
-    dataFrame = readDataFrame(fileName=dataFile)
-    frame = int(input("which frame do you want? frame = "))
-    obj1.VF = dataFrame["SDV210_frame{}".format(frame)]
-    obj1.stress = dataFrame["SDV212_frame{}".format(frame)]
+    dataSource = "fromFile"  # = "fromFile" or "fromGeometry"
+    if dataSource == "fromGeometry":
+        decideVfByGeometry(obj1, mod="constrainedSharp")
+    elif dataSource == "fromFile":
+        dataFile = input("\033[40;35;1m{}\033[0m".format(
+            "please give the data file name (include the path): "
+        ))
+        dataFrame = readDataFrame(fileName=dataFile)
+        frame = int(input("which frame do you want? frame = "))
+        obj1.VF = dataFrame["SDV210_frame{}".format(frame)]
+        obj1.stress = dataFrame["SDV212_frame{}".format(frame)]
     
     ### get the maximum x and minimum, and obj1.ratio_draw
     decide_ratio_draw(obj1)
     
     ## show the entire body with fitting field
     field = SmoothEntireBody(obj1)  # ignite ---------------------------------------------------------
-    field.draw_fitting_field(fieldOption="stress", drawArrows=False, preRefine=True, minVal=-550.)
-    # field.draw_average_field(fieldOption="VF", drawArrows=True, drawSmooth=True)
+    # field.draw_fitting_field(fieldOption="stress", drawArrows=False, preRefine=True, minVal=-550.)
+    # field.draw_average_field(fieldOption="stress", drawArrows=False, drawSmooth=True, minVal=-550., maxVal=700.)
     # field.draw_regularDenseNodes_localDense(fieldOption="VF")
-    # field.draw_regularDenseNodes_localDense(fieldOption="stress", minVal=-550.)
+    field.draw_regularDenseNodes_localDense(fieldOption="stress", minVal=-550., maxVal=700., preRefine=True)
+
+    ### show the whole field with the local patch
+    tipRight = min(
+        [i for i in range(len(obj1.elements))], 
+        key=lambda ele:
+            sum((np.array(obj1.eleCenter(ele)[:2]) - np.array([20., 0.5]))**2)
+    )
+    ele1 = min(
+        [i for i in range(len(obj1.elements))], 
+        key=lambda ele:
+            sum((np.array(obj1.eleCenter(ele)[:2]) - np.array([10., 2.5 * 3.**0.5]))**2)
+    )
+    tipLeft = min(
+        [i for i in range(len(obj1.elements))], 
+        key=lambda ele:
+            sum((np.array(obj1.eleCenter(ele)[:2]) - np.array([-20., 0.5]))**2)
+    )
+    fieldOption = "stress"  # = "VF" or "stress"
+    if fieldOption == "stress":
+        field.draw_fitting_field(fieldOption="stress", 
+                                drawArrows=False, 
+                                preRefine=True, 
+                                minVal=-550., maxVal=700., 
+                                frozenClassifier=True, 
+                                otherPatches=(tipRight, tipLeft, ele1))
+    elif fieldOption == "VF":
+        field.draw_fitting_field(fieldOption="VF", 
+                                drawArrows=True, 
+                                preRefine=False, 
+                                otherPatches=(tipRight, tipLeft, ele1))

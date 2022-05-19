@@ -216,12 +216,30 @@ def weighted_average_forStress(
             eles = list(obj1.eleNeighbor[iele] | {iele})
         else:
             eles = obj1.findHorizon(iele, obj1.inSphericalHorizon, spreadRange)
-        idx = 0
-        while idx < len(eles):
-            if obj1.VF[eles[idx]] != obj1.VF[iele]:
-                del eles[idx]
-            else:
-                idx += 1
+        
+        ### smoothing only takes stresses of elements with same VF
+        # idx = 0
+        # while idx < len(eles):
+        #     if abs(obj1.VF[eles[idx]] - obj1.VF[iele]) > 1.e-3:  # if obj1.VF[eles[idx]] != obj1.VF[iele]:
+        #         del eles[idx]
+        #     else:
+        #         idx += 1
+        ### another way: smoothing only takes stresses of elements with same character (≈ 0, ≈ 1, or 0 < VF < 1)
+        eps = 1.e-3
+        elesNew = []
+        if obj1.VF[iele] < eps:
+            for ele in eles:
+                if obj1.VF[ele] < eps:
+                    elesNew.append(ele)
+        elif obj1.VF[iele] > 1.-eps:
+            for ele in eles:
+                if obj1.VF[ele] > 1.-eps:
+                    elesNew.append(ele)
+        else:
+            for ele in eles:
+                if eps <= obj1.VF[ele] <= 1.-eps:
+                    elesNew.append(ele)
+        eles = elesNew
 
         # eles = sameGrainNeighbor_forStress(  # get the neighbors
         #     obj1, iele, 
@@ -245,6 +263,8 @@ def weighted_average_forStress(
             # return (weights * eVals).sum() / weights.sum()
             return (weights * eVals).sum()
         else:
+            print("\033[31;1m{}\033[0m".format(
+                "no eles meet requirements in neighbor region, return stress 0 as weightedAverage value"))
             return 0.  # no eles meet requirements in neighbor region, return stress 0 as weightedAverage value
     else:
         print("\033[31;1m{}\033[0m".format("gradient for stress has not been developed yet."))
