@@ -224,22 +224,23 @@ def weighted_average_forStress(
         #         del eles[idx]
         #     else:
         #         idx += 1
-        ### another way: smoothing only takes stresses of elements with same character (≈ 0, ≈ 1, or 0 < VF < 1)
-        eps = 1.e-3
-        elesNew = []
-        if obj1.VF[iele] < eps:
-            for ele in eles:
-                if obj1.VF[ele] < eps:
-                    elesNew.append(ele)
-        elif obj1.VF[iele] > 1.-eps:
-            for ele in eles:
-                if obj1.VF[ele] > 1.-eps:
-                    elesNew.append(ele)
-        else:
-            for ele in eles:
-                if eps <= obj1.VF[ele] <= 1.-eps:
-                    elesNew.append(ele)
-        eles = elesNew
+
+        # ### another way: smoothing only takes stresses of elements with same character (≈ 0, ≈ 1, or 0 < VF < 1)
+        # eps = 1.e-3
+        # elesNew = []
+        # if obj1.VF[iele] < eps:
+        #     for ele in eles:
+        #         if obj1.VF[ele] < eps:
+        #             elesNew.append(ele)
+        # elif obj1.VF[iele] > 1.-eps:
+        #     for ele in eles:
+        #         if obj1.VF[ele] > 1.-eps:
+        #             elesNew.append(ele)
+        # else:
+        #     for ele in eles:
+        #         if eps <= obj1.VF[ele] <= 1.-eps:
+        #             elesNew.append(ele)
+        # eles = elesNew
 
         # eles = sameGrainNeighbor_forStress(  # get the neighbors
         #     obj1, iele, 
@@ -301,11 +302,6 @@ def sameGrainNeighbor_forStress(
     for nei in obj1.findHorizon(iele, inHorizon=inLayers):
         if chooseEle(obj1.VF[nei], mod):
             neis.append(nei)
-    # if len(neis) == 0:
-    #     raise ValueError("len(neis) == 0 !!!")
-    # print("\033[35;1m {} \033[40;33;1m {} \033[0m".format(
-    #     "len(neis) =", len(neis)
-    # ), end=";  ")
     return neis 
 
 

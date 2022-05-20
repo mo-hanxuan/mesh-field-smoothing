@@ -31,8 +31,8 @@ from show_entire_body import entireBody
 from decideVfByGeometry import *
 from horizon import *
 
-
-# def get_initialWeight(horizon, ):
+import os
+os.system("")  # activate the string-color in command-line
 
 
 class SmoothEntireBody(object):
@@ -481,7 +481,8 @@ class SmoothEntireBody(object):
                         fieldOption="VF",  # field can be VF or stress 
                         minVal=None, maxVal=None,
                         drawArrows=False, 
-                        drawSmooth=True):
+                        drawSmooth=True,
+                        denseGrid=False):
         """
             use weighted average
             draw the patch (entire body as a patch)
@@ -506,7 +507,7 @@ class SmoothEntireBody(object):
         maxVal = max(field) if maxVal == None else maxVal
 
         patchEles = {i for i in range(len(obj.elements))}
-        facets, edges, gradients = {}, {}, {}
+        facets, edges, gradients, denseEdges = {}, {}, {}, {}
         for facet in obj.outerFacetDic:
             ele = obj.outerFacetDic[facet]
 
@@ -525,8 +526,8 @@ class SmoothEntireBody(object):
                     denseOrder = 1
 
                 ### get the densified facets inside big facets
-                facets[facet]["denseNodesCoo"], facets[facet]["facets"], outerFrames = facetDenseRegular(
-                    np.array([obj.nodes[node] for node in facet]), order=denseOrder
+                facets[facet]["denseNodesCoo"], facets[facet]["facets"], outerGrids, innerGrids = facetDenseRegular(
+                    np.array([obj.nodes[node] for node in facet]), order=denseOrder, denseGrid=True
                 )
                 facets[facet]["fieldVals"] = {}
                 for node in facets[facet]["denseNodesCoo"]:
@@ -540,7 +541,7 @@ class SmoothEntireBody(object):
                         2,  # dimension
                         spreadRange,  # spreadRange
                     )
-                for edge in outerFrames:
+                for edge in outerGrids:
                     xyzs = tuple(sorted([
                         tuple(facets[facet]["denseNodesCoo"][edge[0]]), 
                         tuple(facets[facet]["denseNodesCoo"][edge[1]]),
@@ -558,6 +559,26 @@ class SmoothEntireBody(object):
                         )) + 0.1, xyzs))  
                     else:
                         edges[xyzs] = [1., 1.]
+
+                if denseGrid:
+                    for edge in innerGrids:
+                        xyzs = tuple(sorted([
+                            tuple(facets[facet]["denseNodesCoo"][edge[0]]), 
+                            tuple(facets[facet]["denseNodesCoo"][edge[1]]),
+                        ]))
+                        ### hight of the edge, represented by field value
+                        if fieldOption == "VF":
+                            denseEdges[xyzs] = list(map(lambda x: float(valueFunc(
+                                x,  # xyz
+                                ele,  # iele
+                                obj,  # obj1
+                                "normal_distri",  # func
+                                "val",  # result
+                                2,  # dimension
+                                spreadRange
+                            )) + 0.1, xyzs))  
+                        else:
+                            denseEdges[xyzs] = [1., 1.]
         
             ### whether draw the arrows of gradients
             if drawArrows:
@@ -585,7 +606,8 @@ class SmoothEntireBody(object):
                   minVal, maxVal,
                   obj.regionCen,  # regionCen
                   gradients, 
-                  fieldOption)
+                  fieldOption, 
+                  denseEdges)
         ).start()
 
     ### ============================================================================= related to patch draw
@@ -594,7 +616,8 @@ class SmoothEntireBody(object):
                               minVal, maxVal, 
                               regionCen,
                               gradients,
-                              fieldOption="VF"):
+                              fieldOption="VF",
+                              denseEdges={}):
         obj = self.obj
         ### ----------------------------------- draw the facets
         glBegin(GL_QUADS)
@@ -653,6 +676,33 @@ class SmoothEntireBody(object):
                         (edges[edge][1] - regionCen[2]) * obj.ratio_draw)
         else:
             for edge in edges:
+                glVertex3f((edge[0][0] - regionCen[0]) * obj.ratio_draw, 
+                           (edge[0][1] - regionCen[1]) * obj.ratio_draw, 
+                           (edge[0][2] - regionCen[2]) * obj.ratio_draw)
+                glVertex3f((edge[1][0] - regionCen[0]) * obj.ratio_draw, 
+                           (edge[1][1] - regionCen[1]) * obj.ratio_draw, 
+                           (edge[1][2] - regionCen[2]) * obj.ratio_draw)
+        glEnd()
+
+        ### ----------------------------------- draw the densified edges inside an element
+        glLineWidth(1.)
+        red, green, blue = 0.4, 0.4, 0.4
+        glColor4f(red, green, blue, 1.0)
+        glMaterialfv(GL_FRONT, GL_AMBIENT, [red, green, blue])
+        glMaterialfv(GL_FRONT, GL_DIFFUSE, [red, green, blue])
+        glMaterialfv(GL_FRONT, GL_SPECULAR, [red, green, blue])
+        glMaterialfv(GL_FRONT, GL_EMISSION, [red, green, blue])
+        glBegin(GL_LINES)
+        if fieldOption == "VF":
+            for edge in denseEdges:
+                glVertex3f((edge[0][0] - regionCen[0]) * obj.ratio_draw, 
+                        (edge[0][1] - regionCen[1]) * obj.ratio_draw, 
+                        (denseEdges[edge][0] - regionCen[2]) * obj.ratio_draw)
+                glVertex3f((edge[1][0] - regionCen[0]) * obj.ratio_draw, 
+                        (edge[1][1] - regionCen[1]) * obj.ratio_draw, 
+                        (denseEdges[edge][1] - regionCen[2]) * obj.ratio_draw)
+        else:
+            for edge in denseEdges:
                 glVertex3f((edge[0][0] - regionCen[0]) * obj.ratio_draw, 
                            (edge[0][1] - regionCen[1]) * obj.ratio_draw, 
                            (edge[0][2] - regionCen[2]) * obj.ratio_draw)
@@ -1018,9 +1068,11 @@ if __name__ == "__main__":
     ## show the entire body with fitting field
     field = SmoothEntireBody(obj1)  # ignite ---------------------------------------------------------
     # field.draw_fitting_field(fieldOption="stress", drawArrows=False, preRefine=True, minVal=-550.)
-    # field.draw_average_field(fieldOption="stress", drawArrows=False, drawSmooth=True, minVal=-550., maxVal=700.)
+    field.draw_average_field(fieldOption="VF", drawArrows=True, drawSmooth=True, denseGrid=True)
+    field.draw_average_field(fieldOption="stress", drawArrows=False, drawSmooth=True, 
+                             minVal=-550., maxVal=700., denseGrid=True)
     # field.draw_regularDenseNodes_localDense(fieldOption="VF")
-    field.draw_regularDenseNodes_localDense(fieldOption="stress", minVal=-550., maxVal=700., preRefine=True)
+    # field.draw_regularDenseNodes_localDense(fieldOption="stress", minVal=-550., maxVal=700., preRefine=True)
 
     ### show the whole field with the local patch
     tipRight = min(

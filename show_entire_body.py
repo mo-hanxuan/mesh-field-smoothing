@@ -15,8 +15,6 @@ from torch._C import InterfaceType
 from decideVfByGeometry import decideVfByGeometry
 from decide_ratio_draw import decide_ratio_draw
 from elementsBody import *
-from scipy.interpolate import griddata
-from collections import OrderedDict
 
 sys.path.append('./tryOpenGL')
 

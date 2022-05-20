@@ -26,10 +26,11 @@ def shapeFunc2D(natCoo):
     return res
 
 
-def facetDenseRegular(nodesCoo, order):
+def facetDenseRegular(nodesCoo, order, denseGrid=False):
     """ input:
             4 nodes' coordiantes of the facet,
             densified order (how many times to densify)
+            denseGrid: bool, whether or not show the dnesified grid inside the outer grid
         output:
             the nodes' coordinates of regular dense grid, 
             and the facet's corresponding nodes' number
@@ -57,15 +58,25 @@ def facetDenseRegular(nodesCoo, order):
                 (i, j), (i+1, j),
                 (i+1, j+1), (i, j+1)
             ])
-    outerFrames = []
+    outerGrids = []
     for i in [0, order]:
         for j in range(1, order + 1):
-            outerFrames.append([(i, j-1), (i, j)])
+            outerGrids.append([(i, j-1), (i, j)])
     for j in [0, order]:
         for i in range(1, order + 1):
-            outerFrames.append([(i-1, j), (i, j)])
+            outerGrids.append([(i-1, j), (i, j)])
+    if not denseGrid:
+        return denseNodesCoo, facets, outerGrids
+    else:
+        innerGrids = []
+        for i in range(1, order):
+            for j in range(1, order + 1):
+                innerGrids.append([(i, j-1), (i, j)])
+        for j in range(1, order):
+            for i in range(1, order + 1):
+                innerGrids.append([(i-1, j), (i, j)])
             
-    return denseNodesCoo, facets, outerFrames
+        return denseNodesCoo, facets, outerGrids, innerGrids
 
 
 if __name__ == "__main__":
